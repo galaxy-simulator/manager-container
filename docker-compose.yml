@@ -4,4 +4,4 @@ services:
   manager:
     build: .
     ports:
-      - "80:80"
+      - 8031:80
