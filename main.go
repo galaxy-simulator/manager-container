@@ -20,11 +20,6 @@ var (
 	mutex   = &sync.Mutex{}
 )
 
-type metric struct {
-	key   string
-	value float64
-}
-
 // indexHandler handles incomming requests on the / endpoint
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	infostring := `Galaxy Simulator Manager 
