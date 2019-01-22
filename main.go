@@ -16,9 +16,16 @@ import (
 )
 
 var (
-	metrics map[string]float64
-	mutex   = &sync.Mutex{}
+	metrics           map[string]float64
+	mutex             = &sync.Mutex{}
+	starBufferChannel = make(chan stargalaxy)
 )
+
+// struct bundling the star and the galaxy index it comes from
+type stargalaxy struct {
+	star  structs.Star2D
+	index int
+}
 
 // indexHandler handles incomming requests on the / endpoint
 func indexHandler(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +82,8 @@ func calcallforcesHandler(w http.ResponseWriter, r *http.Request) {
 
 // getallstarsHandler handles requests on the /getallstars/{treeindex} endpoint
 func getallstarsHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("[   ] The getallstars Handler was accessed")
+
 	// get the tree index
 	vars := mux.Vars(r)
 	treeindex, _ := strconv.ParseInt(vars["treeindex"], 10, 0)
@@ -110,6 +119,7 @@ func dbUpdateCenterOfMass(treeindex int64) {
 
 // listofstars returns a pointer to a list of all stars
 func listofstars(treeindex int64) *[]structs.Star2D {
+
 	requesturl := fmt.Sprintf("http://db/starlist/%d", int(treeindex))
 	fmt.Printf("requesturl: %s\n", requesturl)
 	resp, err := http.Get(requesturl)
@@ -206,6 +216,20 @@ func metricHandler(w http.ResponseWriter, r *http.Request) {
 	mutex.Unlock()
 }
 
+// getstarHandler returns a single star (in json) on which the forces still need to be calculated
+// it returns a json object containing the star and the galaxy index the star is from:
+//
+// {{{x, y},{vx, vy}, m}, index}
+//
+// This handler is used by the simulators to obtains stars from the manager and enables them to work all the time
+// without needing to wait for the manager to provide star to process
+func getstarHandler(w http.ResponseWriter, r *http.Request) {
+	// get a stargalaxy (struct containing a star and it's galaxy index) from the starBufferChannel
+	star := <-starBufferChannel
+
+	_, _ = fmt.Fprintf(w, "%v", star)
+}
+
 func main() {
 	router := mux.NewRouter()
 
@@ -214,6 +238,7 @@ func main() {
 	router.HandleFunc("/getallstars/{treeindex}", getallstarsHandler).Methods("GET")
 	router.HandleFunc("/new/{w}", newHandler).Methods("GET")
 	router.HandleFunc("/metrics", metricHandler).Methods("GET", "POST")
+	router.HandleFunc("/getstar", getstarHandler).Methods("GET")
 
 	fmt.Println("Manager Container up")
 	log.Fatal(http.ListenAndServe(":80", router))
