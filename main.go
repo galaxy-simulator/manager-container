@@ -17,15 +17,16 @@ import (
 
 var (
 	metrics           map[string]float64
-	mutex             = &sync.Mutex{}
-	starBufferChannel = make(chan stargalaxy)
+	mutex                   = &sync.Mutex{}
+	starBufferChannel       = make(chan structs.Stargalaxy, 1000000)
+	currentStarBuffer int64 = 0
 )
 
 // struct bundling the star and the galaxy index it comes from
-type stargalaxy struct {
-	star  structs.Star2D
-	index int
-}
+// type stargalaxy struct {
+// 	star  structs.Star2D
+// 	index int64
+// }
 
 // indexHandler handles incomming requests on the / endpoint
 func indexHandler(w http.ResponseWriter, r *http.Request) {
@@ -230,6 +231,38 @@ func getstarHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "%v", star)
 }
 
+func fillStarBufferChannel() {
+	fmt.Println("Filling the star buffer channel")
+
+	// get the list of stars using the currentStarBuffer value
+	// the currentStarBuffer value is a counter keeping track of which galaxy is going to
+	// be inserted into the StarBufferChannel next
+	listofstars := listofstars(currentStarBuffer)
+
+	for _, star := range *listofstars {
+		starBufferChannel <- structs.Stargalaxy{star, currentStarBuffer}
+	}
+
+	// increase the currentStarBuffer counter
+	currentStarBuffer += 1
+}
+
+func providestarsHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("Providing stars from the StarBufferHandler")
+
+	// if there are no stars in the star buffer channel, fill the star buffer channel width stars
+	if len(starBufferChannel) == 0 {
+		fillStarBufferChannel()
+	}
+
+	stargalaxy := <-starBufferChannel
+	marshaledStargalaxy, _ := json.Marshal(stargalaxy)
+
+	_, _ = fmt.Fprintf(w, "%v", string(marshaledStargalaxy))
+
+	fmt.Println("Done providing stars from the StarBufferHandler")
+}
+
 func main() {
 	router := mux.NewRouter()
 
@@ -239,6 +272,8 @@ func main() {
 	router.HandleFunc("/new/{w}", newHandler).Methods("GET")
 	router.HandleFunc("/metrics", metricHandler).Methods("GET", "POST")
 	router.HandleFunc("/getstar", getstarHandler).Methods("GET")
+
+	router.HandleFunc("/providestars/{treeindex}", providestarsHandler).Methods("GET")
 
 	fmt.Println("Manager Container up")
 	log.Fatal(http.ListenAndServe(":80", router))
