@@ -89,9 +89,10 @@ func getallstarsHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	treeindex, _ := strconv.ParseInt(vars["treeindex"], 10, 0)
 
-	listofstars := listofstars(treeindex)
+	// get a pointer to the list of all stars
+	listOfStars := listofstars(treeindex)
 
-	_, _ = fmt.Fprintf(w, "Got the listofstars, it's %v\n", listofstars)
+	_, _ = fmt.Fprintf(w, "Got the listOfStars, it's %v\n", listOfStars)
 }
 
 // dbUpdateTotalMass updates the Total mass of each node by recursively iterating over all subnodes
@@ -121,15 +122,13 @@ func dbUpdateCenterOfMass(treeindex int64) {
 // listofstars returns a pointer to a list of all stars
 func listofstars(treeindex int64) *[]structs.Star2D {
 
+	// define and make the request
 	requesturl := fmt.Sprintf("http://db/starlist/%d", int(treeindex))
-	fmt.Printf("requesturl: %s\n", requesturl)
 	resp, err := http.Get(requesturl)
-	fmt.Println("After http GET, but before the error handling")
 	if err != nil {
 		fmt.Println("PANIC")
 		panic(err)
 	}
-	fmt.Println("After http GET and after error handling")
 	defer resp.Body.Close()
 
 	// read the response containing a list of all stars in json format
@@ -143,17 +142,10 @@ func listofstars(treeindex int64) *[]structs.Star2D {
 		panic(jsonUnmarschalErr)
 	}
 
-	fmt.Printf("listofstars: %v\n", *listofstars)
-	listofstar := *listofstars
-
-	for i := 0; i < len(*listofstars); i++ {
-		fmt.Println(listofstar[i])
-	}
-
 	return listofstars
 }
 
-// newHandler makes a request to the database container creating a new tree
+// newHandler makes a request to the database container creating a new tree creating a new tree
 func newHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	treewidth, _ := strconv.ParseFloat(vars["w"], 64)
@@ -189,11 +181,13 @@ func metricHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("The MetricHandler was accessed")
 	mutex.Lock()
 
+	// if the request is a GET request, return the metrics map element wise
 	if r.Method == "GET" {
 		for key, value := range metrics {
 			_, _ = fmt.Fprintf(w, "manager_%s %v\n", key, value)
 		}
 
+		// if the request is a POST request, insert the incoming metric into the map
 	} else if r.Method == "POST" {
 		log.Println("Incomming POST")
 
@@ -231,6 +225,7 @@ func getstarHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "%v", star)
 }
 
+// fillStarBufferChannel fills the starBufferChannel with all the stars from the next timestep
 func fillStarBufferChannel() {
 	fmt.Println("Filling the star buffer channel")
 
@@ -239,6 +234,8 @@ func fillStarBufferChannel() {
 	// be inserted into the StarBufferChannel next
 	listofstars := listofstars(currentStarBuffer)
 
+	// insert all the stars from the list of stars into the starBufferChannel in the form of
+	// a star galaxy, a type combining the star and the galaxy it belongs into into a single type
 	for _, star := range *listofstars {
 		starBufferChannel <- structs.Stargalaxy{star, currentStarBuffer}
 	}
@@ -247,17 +244,20 @@ func fillStarBufferChannel() {
 	currentStarBuffer += 1
 }
 
+// providestarsHandler returns a single star for usage by the simulator container
 func providestarsHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Providing stars from the StarBufferHandler")
 
-	// if there are no stars in the star buffer channel, fill the star buffer channel width stars
+	// if there are no stars in the star buffer channel, fill the star buffer channel with stars
 	if len(starBufferChannel) == 0 {
 		fillStarBufferChannel()
 	}
 
+	// get a single star from the starBufferChannel and marshal it to json
 	stargalaxy := <-starBufferChannel
 	marshaledStargalaxy, _ := json.Marshal(stargalaxy)
 
+	// return the star
 	_, _ = fmt.Fprintf(w, "%v", string(marshaledStargalaxy))
 
 	fmt.Println("Done providing stars from the StarBufferHandler")
